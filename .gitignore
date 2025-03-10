@@ -1,3 +1,6 @@
 venv
-result/
-cross_model/
+result/*
+cross_model/*
+hs_err*
+gui.py
+print.py
