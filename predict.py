@@ -62,11 +62,18 @@ window.setCentralWidget(scroll_area)
 container_widget = QWidget()
 scroll_area.setWidget(container_widget)
 
-# Create layout
-layout = QVBoxLayout(container_widget)
-layout.setContentsMargins(0, 0, 0, 0)
-layout.setSpacing(0)
+main_layout = QVBoxLayout()
+container_widget.setLayout(main_layout)
 
+# Create layout
+input_container = QVBoxLayout()
+input_container.setContentsMargins(0, 0, 0, 0)
+input_container.setSpacing(0)
+main_layout.addLayout(input_container)
+
+
+tables_container = QVBoxLayout()
+main_layout.addLayout(tables_container)
 
 
 task_def = {
@@ -130,16 +137,17 @@ def get_input_data(file):
         # table.setItem(row, 1, QTableWidgetItem(key))
         table.setItem(row, 1, QTableWidgetItem('\n'.join(value)))
 
-        table.setRowHeight(row, 10*len(value))
+        table.setRowHeight(row, 18*len(value))
 
         row += 1
 
     table.resizeColumnsToContents()
 
     
-    global layout
-    layout.addWidget(QLabel("Input data:"))
-    layout.addWidget(table)
+    global tables_container
+    tables_container.addWidget(QLabel("Input data:"))
+    tables_container.addWidget(table)
+    table.lower()
 
 
     QApplication.processEvents()
@@ -358,8 +366,8 @@ def retrieval(args):
 
     table.resizeColumnsToContents()
 
-    layout.addWidget(QLabel("Retrieval dict:"))
-    layout.addWidget(table)
+    tables_container.addWidget(QLabel("Retrieval dict:"))
+    tables_container.addWidget(table)
 
     QApplication.processEvents()
     window.update()
@@ -465,8 +473,8 @@ def rerank(args):
     table.resizeColumnsToContents()
     table.resizeRowsToContents()
 
-    layout.addWidget(QLabel("Output:"))
-    layout.addWidget(table)
+    tables_container.addWidget(QLabel("Output:"))
+    tables_container.addWidget(table)
 
     QApplication.processEvents()
     window.update()
@@ -485,19 +493,26 @@ def button_click():
     #     if child.widget() and not isinstance(child.widget(), QPushButton):
     #         child.widget().deleteLater()
     file, _ = QFileDialog.getOpenFileName()
-    print(f"{file}")
-    file_label.setText(f'Selected file: "{file}"')
+    if file:
+        print(f"{file}")
+        file_label.setText(f'Selected file: "{file}"')
 
 def execute_button():
     global file
     if not file : return
-    while layout.count():
-        child = layout.takeAt(0)
-        if child.widget() and not isinstance(child.widget(), QPushButton):
-            child.widget().deleteLater()
+    # while input_container.count():
+    #     child = input_container.takeAt(0)
+    #     if child.widget() and not isinstance(child.widget(), QPushButton):
+    #         child.widget().deleteLater()
+    global tables_container
+    tables_container = QVBoxLayout(container_widget)
+    tables_container.setContentsMargins(0, 0, 0, 0)
+    tables_container.setSpacing(0)
 
-    layout.addStretch()
+    main_layout.addLayout(tables_container)
+
     rerank(args)
+
 
 if __name__ == '__main__':
     input_btn = QPushButton("Open Input File")
@@ -506,15 +521,15 @@ if __name__ == '__main__':
     exec_btn = QPushButton("Execute File")
     exec_btn.clicked.connect(execute_button)
 
-    file_label = QLabel(f"Selected file: {file}")
+    file_label = QLabel(fSelected file: "{file}"')
 
 
-    layout.addWidget(input_btn)
-    layout.addWidget(exec_btn)
-    layout.addWidget(file_label)
+    input_container.addWidget(input_btn)
+    input_container.addWidget(exec_btn)
+    input_container.addWidget(file_label)
     # layout.addStretch()
 
-    layout.addStretch()
+    input_container.addStretch()
 
     # rerank(args)
     sys.exit(app.exec())
