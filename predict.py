@@ -1,5 +1,7 @@
 import sys, os
+from pathlib import Path
 import argparse
+
 parser = argparse.ArgumentParser(description='manual to this script')
 parser.add_argument("--gpu", type=str, default='0')
 parser.add_argument("--task", type=str, default='cc')
@@ -10,15 +12,17 @@ args = parser.parse_args()
 os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 print(args)
 
+from PyQt6 import QtCore
 from pyserini import search
 from pyserini.search import SimpleSearcher
 # from pyserini.search.lucene import LuceneSearcher
 from pygaggle.rerank.base import Query, Text
-from pygaggle.rerank.transformer import MonoT5
+from pygaggle.rerank.transformer import MonoT5, torch
 import nltk
 from sentence_transformers import CrossEncoder
 from transformers import T5ForConditionalGeneration
 import torch.nn as nn
+import torch.cuda as cuda
 
 import json
 import numpy as np
@@ -32,6 +36,9 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QBoxLayout,
+    QCheckBox,
+    QMessageBox,
+    QHBoxLayout,
     QLabel,
     QPushButton,
     QMainWindow,
@@ -66,10 +73,10 @@ main_layout = QVBoxLayout()
 container_widget.setLayout(main_layout)
 
 # Create layout
-input_container = QVBoxLayout()
-input_container.setContentsMargins(0, 0, 0, 0)
-input_container.setSpacing(0)
-main_layout.addLayout(input_container)
+input_layout = QVBoxLayout()
+input_layout.setContentsMargins(0, 0, 0, 0)
+input_layout.setSpacing(0)
+main_layout.addLayout(input_layout)
 
 
 tables_container = QVBoxLayout()
@@ -84,10 +91,6 @@ task_def = {
 
 proid2name = np.load('./file/proid2name.npy', allow_pickle=True).item()
 pmid2text = np.load('./file/pmid2text.npy', allow_pickle=True).item()
-
-
-def draw_table(table):
-    pass
 
 def get_input_data(file):
     
@@ -166,7 +169,7 @@ def data_extract(args):
     '''
     pro2text = get_input_data(args.file)
     
-    save_file = f'./test/{args.task}_dev_t5_texts.npy'
+    save_file = f'./test/{Path(args.file).stem}_{args.task}_dev_t5_texts.npy'
     print(save_file)
     if os.path.exists(save_file):
         data = np.load(save_file, allow_pickle=True).item()
@@ -176,7 +179,11 @@ def data_extract(args):
         # load models
         model = T5ForConditionalGeneration.from_pretrained('castorini/monot5-base-med-msmarco')
         model = nn.DataParallel(model)
-        model = model.cpu().module
+        if cuda.is_available():
+            model = model.cuda().module
+        else:
+            model = model.cpu().module
+
         T5tokenizer = MonoT5.get_tokenizer('t5-base')
         reranker = MonoT5(model, T5tokenizer)
 
@@ -185,7 +192,6 @@ def data_extract(args):
             query = f"what is the {task_def[args.task]} of protein {proid2name[pro]}?"
             sentences = pro2text[pro]
             if len(sentences) < 3:
-                print(sentences)
                 continue
             texts = []
             for sentence in sentences:
@@ -221,6 +227,7 @@ def data_extract(args):
     #     table.setItem(row, 0, QTableWidgetItem(key))
     #     # table.setItem(row, 1, QTableWidgetItem(key))
     #     table.setItem(row, 1, QTableWidgetItem(', '.join(value)))
+    #     print(','.join(value))
     #
     #     table.setRowHeight(row, 10*len(value))
     #
@@ -228,19 +235,19 @@ def data_extract(args):
     #
     # table.resizeColumnsToContents()
     #
-    # layout.addWidget(QLabel("Input data:"))
-    # layout.addWidget(table)
+    # tables_container.addWidget(QLabel("Input data:"))
+    # tables_container.addWidget(table)
     #
     # QApplication.processEvents()
     # window.update()
-
+    #
     return data
 
 
 def all_retrieval_dict(args):
 
     # make or get numpy cached file of current step
-    save_file = f'./test/{args.task}_retrieval_all.npy'
+    save_file = f'./test/{Path(args.file).stem}_{args.task}_retrieval_all.npy'
     if os.path.exists(save_file):
         data = np.load(save_file, allow_pickle=True).item()
         print(save_file)
@@ -313,7 +320,7 @@ def all_retrieval_dict(args):
 
 def retrieval(args):
     # make or get numpy cached file of current step
-    save_file = f'./test/{args.task}_retrieval.npy'
+    save_file = f'./test/{Path(args.file).stem}_{args.task}_retrieval.npy'
     if args.pro != '0':
         save_file = save_file.replace('retrieval', f'retrieval_pro_{args.pro}')
 
@@ -381,7 +388,7 @@ def rerank(args):
     score = {}
 
     # make or get numpy cached file of current step
-    score_dict = f'./test/{args.task}_t5_scores.npy'
+    score_dict = f'./test/{Path(args.file).stem}_{args.task}_t5_scores.npy'
     if os.path.exists(score_dict):
         print("score cache: ", score_dict)
         score = np.load(score_dict, allow_pickle=True).item()
@@ -460,7 +467,7 @@ def rerank(args):
             row += 1
 
     
-    save_file = f'./result/{args.task}_t5_dev_rerank.txt'
+    save_file = f'./result/{Path(args.file).stem}_{args.task}_t5_dev_rerank.txt'
     if args.pro != '0':
         save_file = save_file.replace('rerank', f'rerank_pro_{args.pro}')
     print(save_file)
@@ -480,30 +487,22 @@ def rerank(args):
     window.update()
 
 
-
-file = "./data/test.txt"
-
 input_button : QPushButton
 file_label : QLabel
 
-def button_click():
-    global file
+def open_input_file():
     # while layout.count():
     #     child = layout.takeAt(0)
     #     if child.widget() and not isinstance(child.widget(), QPushButton):
     #         child.widget().deleteLater()
-    file, _ = QFileDialog.getOpenFileName()
-    if file:
-        print(f"{file}")
-        file_label.setText(f'Selected file: "{file}"')
+    args.file, _ = QFileDialog.getOpenFileName()
+    if args.file:
+        print(f"{args.file}")
+        file_label.setText(f'Selected file: "{args.file}"')
 
 def execute_button():
-    global file
-    if not file : return
-    # while input_container.count():
-    #     child = input_container.takeAt(0)
-    #     if child.widget() and not isinstance(child.widget(), QPushButton):
-    #         child.widget().deleteLater()
+    if not args.file : return
+
     global tables_container
     tables_container = QVBoxLayout(container_widget)
     tables_container.setContentsMargins(0, 0, 0, 0)
@@ -513,23 +512,75 @@ def execute_button():
 
     rerank(args)
 
+def clear_cache():
+    QMessageBox.information(
+        window,
+        "Cache Clear",
+        "To clear the file cache, remove all files in ./test/",
+        QMessageBox.StandardButton.Ok
+    )
 
 if __name__ == '__main__':
+
     input_btn = QPushButton("Open Input File")
-    input_btn.clicked.connect(button_click)
+    input_btn.clicked.connect(open_input_file)
 
     exec_btn = QPushButton("Execute File")
     exec_btn.clicked.connect(execute_button)
 
-    file_label = QLabel(fSelected file: "{file}"')
+    clear_cache_btn= QPushButton("Clear Cached Files")
+    clear_cache_btn.clicked.connect(clear_cache)
+
+    file_label = QLabel(f'Selected file: "{args.file}"')
+
+    mode_boxes_container = QWidget()
+    mode_boxes_layout = QHBoxLayout()
+    mode_boxes_container.setLayout(mode_boxes_layout)
+
+    cc_box = QCheckBox(text='Cellular Component')
+    cc_box.setCheckState(QtCore.Qt.CheckState.Checked)
+    bp_box = QCheckBox(text='Biological Process')
+    mf_box = QCheckBox(text='Molecular Function')
+
+    def handle_cc(state):
+        if state:
+            bp_box.setCheckState(QtCore.Qt.CheckState.Unchecked)
+            mf_box.setCheckState(QtCore.Qt.CheckState.Unchecked)
+            args.task = 'cc'
+            args.pro = 2
+
+    def handle_bp(state):
+        if state:
+            cc_box.setCheckState(QtCore.Qt.CheckState.Unchecked)
+            mf_box.setCheckState(QtCore.Qt.CheckState.Unchecked)
+            args.task = 'bp'
+            args.pro = 3
+
+    def handle_mf(state):
+        if state:
+            cc_box.setCheckState(QtCore.Qt.CheckState.Unchecked)
+            bp_box.setCheckState(QtCore.Qt.CheckState.Unchecked)
+            args.task = 'mf'
+            args.pro = 3
+
+    cc_box.stateChanged.connect(handle_cc)
+    bp_box.stateChanged.connect(handle_bp)
+    mf_box.stateChanged.connect(handle_mf)
 
 
-    input_container.addWidget(input_btn)
-    input_container.addWidget(exec_btn)
-    input_container.addWidget(file_label)
-    # layout.addStretch()
+    mode_boxes_layout.addWidget(cc_box)
+    mode_boxes_layout.addWidget(bp_box)
+    mode_boxes_layout.addWidget(mf_box)
 
-    input_container.addStretch()
+    input_layout.addWidget(clear_cache_btn)
+    input_layout.addWidget(input_btn)
+    if not cuda.is_available():
+        input_layout.addWidget(QLabel(f'CUDA gpu not set up, instead using cpu.'))
+    input_layout.addWidget(file_label)
+    input_layout.addWidget(mode_boxes_container)
+    input_layout.addWidget(exec_btn)
+
+    input_layout.addStretch()
 
     # rerank(args)
     sys.exit(app.exec())
